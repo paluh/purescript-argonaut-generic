@@ -19,7 +19,7 @@ import Data.Argonaut.Core (Json, toArray, toObject, toString)
 import Data.Argonaut.Decode.Class (class DecodeJson, decodeJson)
 import Data.Array (uncons)
 import Data.Bifunctor (lmap)
-import Data.Either (Either(..))
+import Data.Either (Either(..), note)
 import Data.Generic.Rep as Rep
 import Data.Maybe (Maybe(..), maybe)
 import Data.Symbol (class IsSymbol, SProxy(..), reflectSymbol)
@@ -111,7 +111,29 @@ class DecodeRepRowList (rl :: RowList) (from :: #Type) (to :: #Type) | rl -> fro
 instance decodeRepRowListNil :: DecodeRepRowList Nil () () where
   decodeRepRowList _ _ = pure identity
 
-instance decodeRepRowListCons :: 
+instance decodeRepRowListConsRecord ::
+  ( RowToList row rl
+  , DecodeRepRowList rl () row
+  , IsSymbol name
+  , DecodeRepRowList tail from from'
+  , Row.Lacks name from'
+  , Row.Cons name (Record row) from' to
+  ) => DecodeRepRowList (Cons name (Record row) tail) from to where
+  decodeRepRowList _ obj = do
+    steps <- (error $ FO.lookup name obj) >>= (toObject >>> note "expected an object") >>= decodeRepRowList (RLProxy :: RLProxy rl)
+    let (value :: Record row) = Builder.build steps {}
+    rest  <- decodeRepRowList tailp obj
+    let
+      first :: Builder (Record from') (Record to)
+      first = Builder.insert namep value
+    pure $ first <<< rest
+    where
+      namep = SProxy :: SProxy name
+      tailp = RLProxy :: RLProxy tail
+      name  = reflectSymbol namep
+      error Nothing  = Left ("error while decoding field " <> name)
+      error (Just a) = Right a
+else instance decodeRepRowListCons :: 
   ( DecodeJson ty
   , IsSymbol name
   , DecodeRepRowList tail from from'

@@ -20,6 +20,7 @@ import Data.Argonaut.Core (Json, fromArray, fromObject, fromString)
 import Data.Argonaut.Encode.Class (class EncodeJson, encodeJson)
 import Data.Generic.Rep as Rep
 import Data.Symbol (class IsSymbol, SProxy(..), reflectSymbol)
+import Foreign.Object (fromFoldable)
 import Foreign.Object as FO
 import Partial.Unsafe (unsafeCrashWith)
 import Prim.Row as Row
@@ -88,7 +89,15 @@ class EncodeRepRowList (rl :: RowList) (row :: #Type) | rl -> row where
 instance encodeRepRowListNil :: EncodeRepRowList Nil row where
   encodeRepRowList _ _ = identity
 
-instance encodeRepRowListCons :: (EncodeJson ty, IsSymbol name, EncodeRepRowList tail row, Row.Cons name ty ignore row) => EncodeRepRowList (Cons name ty tail) row where
+instance encodeRepRowListConsRecord :: (RowToList fieldRow rl, EncodeRepRowList rl fieldRow, IsSymbol name, EncodeRepRowList tail row, Row.Cons name (Record fieldRow) ignore row) => EncodeRepRowList (Cons name (Record fieldRow) tail) row where
+  encodeRepRowList _ rec = \obj -> FO.insert (reflectSymbol namep) valueEncoded (cont obj)
+    where
+      namep = SProxy :: SProxy name
+      value = get namep rec
+      valueEncoded = fromObject $ encodeRepRowList (RLProxy :: RLProxy rl) value (fromFoldable [])
+      tailp = RLProxy :: RLProxy tail
+      cont  = encodeRepRowList tailp rec
+else instance encodeRepRowListCons :: (EncodeJson ty, IsSymbol name, EncodeRepRowList tail row, Row.Cons name ty ignore row) => EncodeRepRowList (Cons name ty tail) row where
   encodeRepRowList _ rec = \obj -> FO.insert (reflectSymbol namep) (encodeJson value) (cont obj)
     where
       namep = SProxy :: SProxy name
