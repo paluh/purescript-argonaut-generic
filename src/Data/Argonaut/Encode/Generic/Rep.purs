@@ -18,7 +18,11 @@ import Prelude
 
 import Data.Argonaut.Core (Json, fromArray, fromObject, fromString)
 import Data.Argonaut.Encode.Class (class EncodeJson, encodeJson)
+import Data.Foldable (fold, foldMap)
+import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep as Rep
+import Data.Newtype (unwrap)
+import Data.Profunctor.Join (Join(..))
 import Data.Symbol (class IsSymbol, SProxy(..), reflectSymbol)
 import Foreign.Object (fromFoldable)
 import Foreign.Object as FO
@@ -28,14 +32,14 @@ import Prim.RowList (class RowToList, Cons, Nil, kind RowList)
 import Prim.TypeError (class Fail, Text)
 import Record (get)
 import Type.Data.RowList (RLProxy(..))
+import Unsafe.Coerce (unsafeCoerce)
 
 class EncodeRep r where
   encodeRep :: r -> Json
 
 instance encodeRepNoConstructors :: EncodeRep Rep.NoConstructors where
   encodeRep r = encodeRep r
-
-instance encodeRepSum :: (EncodeRep a, EncodeRep b) => EncodeRep (Rep.Sum a b) where
+else instance encodeRepSum :: (EncodeRep a, EncodeRep b) => EncodeRep (Rep.Sum a b) where
   encodeRep (Rep.Inl a) = encodeRep a
   encodeRep (Rep.Inr b) = encodeRep b
 
@@ -95,6 +99,15 @@ instance encodeRepRowListConsRecord :: (RowToList fieldRow rl, EncodeRepRowList 
       namep = SProxy :: SProxy name
       value = get namep rec
       valueEncoded = fromObject $ encodeRepRowList (RLProxy :: RLProxy rl) value (fromFoldable [])
+      tailp = RLProxy :: RLProxy tail
+      cont  = encodeRepRowList tailp rec
+else instance encodeRepRowListConsArrayRecord :: (RowToList srow srl, EncodeRepRowList srl srow, IsSymbol name, EncodeRepRowList tail row, Row.Cons name (Array (Record srow)) ignore row) => EncodeRepRowList (Cons name (Array (Record srow)) tail) row where
+  encodeRepRowList _ rec = \obj -> FO.insert (reflectSymbol namep) value (cont obj)
+    where
+      namep = SProxy :: SProxy name
+      arr = get namep rec
+      arr' = map (fromObject <<< flip (encodeRepRowList (RLProxy ∷ RLProxy srl)) FO.empty) arr
+      value = fromArray $ arr'
       tailp = RLProxy :: RLProxy tail
       cont  = encodeRepRowList tailp rec
 else instance encodeRepRowListCons :: (EncodeJson ty, IsSymbol name, EncodeRepRowList tail row, Row.Cons name ty ignore row) => EncodeRepRowList (Cons name ty tail) row where

@@ -21,7 +21,11 @@ import Test.Assert (assert)
 
 data Example
   = Either (Either String Example)
-  | Record {foo :: Int, bar :: String, baz :: { x :: Number, r :: { s :: Number }}}
+  | Record
+      { foo :: Int
+      , bar :: Array String
+      , baz :: Array { x :: Number, r :: { s :: Number }}
+      }
   | Product Int Int Example
 
 derive instance eqExample :: Eq Example
@@ -51,7 +55,7 @@ main :: Effect Unit
 main = do
   example $ Either $ Left "foo"
   example $ Either $ Right $ Either $ Left "foo"
-  example $ Record {foo: 42, bar: "bar", baz: { x: 8.0, r: { s: 9.0 }}}
+  example $ Record {foo: 42, bar: ["bar"], baz: [{ x: 8.0, r: { s: 9.0 }}]}
   example $ Product 1 2 $ Either $ Left "foo"
   example $ Frikandel
   testLiteralSumWithTransform identity Frikandel "\"Frikandel\""

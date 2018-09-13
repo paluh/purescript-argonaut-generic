@@ -23,6 +23,7 @@ import Data.Either (Either(..), note)
 import Data.Generic.Rep as Rep
 import Data.Maybe (Maybe(..), maybe)
 import Data.Symbol (class IsSymbol, SProxy(..), reflectSymbol)
+import Data.Traversable (traverse)
 import Foreign.Object as FO
 import Partial.Unsafe (unsafeCrashWith)
 import Prim.Row as Row
@@ -133,7 +134,33 @@ instance decodeRepRowListConsRecord ::
       name  = reflectSymbol namep
       error Nothing  = Left ("error while decoding field " <> name)
       error (Just a) = Right a
-else instance decodeRepRowListCons :: 
+else instance decodeRepRowListConsArrayRecord ::
+  ( RowToList row rl
+  , DecodeRepRowList rl () row
+  , IsSymbol name
+  , DecodeRepRowList tail from from'
+  , Row.Lacks name from'
+  , Row.Cons name (Array (Record row)) from' to
+  ) => DecodeRepRowList (Cons name (Array (Record row)) tail) from to where
+  decodeRepRowList _ obj = do
+    steps <-
+      (error $ FO.lookup name obj)
+      >>= toArray >>> note "expected an array"
+      >>= traverse (toObject >>> note "expected an object")
+      >>= traverse (decodeRepRowList (RLProxy :: RLProxy rl))
+    let (value :: Array (Record row)) = map (flip Builder.build {}) steps
+    rest  <- decodeRepRowList tailp obj
+    let
+      first :: Builder (Record from') (Record to)
+      first = Builder.insert namep value
+    pure $ first <<< rest
+    where
+      namep = SProxy :: SProxy name
+      tailp = RLProxy :: RLProxy tail
+      name  = reflectSymbol namep
+      error Nothing  = Left ("error while decoding field " <> name)
+      error (Just a) = Right a
+else instance decodeRepRowListCons ::
   ( DecodeJson ty
   , IsSymbol name
   , DecodeRepRowList tail from from'
